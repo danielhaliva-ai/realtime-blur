@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>טשטוש בזמן אמת</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: כלי עבודה שקט, כמו מסך הקרנה ביתי — הסרטון הוא הכוכב.
+   IDEA: שלט של מקרן: מסך גדול, ומתחתיו פס כפתורים פשוט.
+   PICTURE: הנגן עצמו, ממלא את הרוחב.
+   COLOUR and TYPE: לילה כחול-שחור, לבן, ואקסנט תכלת; Rubik.
+   LAYOUT: כותרת קטנה, נגן, פס שליטה, שורת מצב. בטלפון הכול בעמודה אחת. */
+:root{color-scheme:dark;--bg:#0e1116;--panel:#171b22;--line:#262c36;--ink:#eef1f5;--dim:#9aa4b2;--acc:#5ec8ff;--warn:#ffb35e}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Rubik,system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:900px;margin:0 auto;padding:16px max(4vw,12px) 40px}
+h1{font-size:clamp(24px,5vw,34px);line-height:1.1;margin:8px 0 4px;font-weight:700}
+.sub{color:var(--dim);margin:0 0 16px;font-size:15px}
+.stage{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center;border:1px solid var(--line)}
+.stage canvas{width:100%;height:100%;object-fit:contain;display:block}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--dim)}
+.empty label{display:inline-block;margin-top:12px}
+video{display:none}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+button,.btn{font:inherit;font-weight:500;min-height:44px;padding:0 18px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn.primary,button.primary{background:var(--acc);color:#04121c;border-color:var(--acc)}
+button:focus-visible,.btn:focus-within,select:focus-visible,input:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent}
+.seg button[aria-pressed=true]{background:#24303f;color:var(--acc)}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}
+.opt{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.opt b{display:block;font-weight:500;margin-bottom:6px}
+.opt small{color:var(--dim);display:block}
+input[type=range]{width:100%;accent-color:var(--acc);height:32px}
+.chk{display:flex;gap:10px;align-items:center;min-height:32px}
+.chk input{width:22px;height:22px;accent-color:var(--acc)}
+.status{margin-top:12px;font-size:14px;color:var(--dim);display:flex;flex-wrap:wrap;gap:6px 16px}
+.status .warn{color:var(--warn)}
+.note{margin-top:18px;font-size:14px;color:var(--dim);border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>טשטוש בזמן אמת</h1>
+  <p class="sub">בוחרים סרטון מהטלפון, והוא מתנגן כשהנשים בו מטושטשות. הכול רץ על המכשיר שלך, שום דבר לא עולה לשרת.</p>
+
+  <div class="stage" id="stage">
+    <canvas id="cv" width="1280" height="720"></canvas>
+    <div class="empty" id="empty">
+      <div>
+        <div id="loadMsg">טוען את מודלי הזיהוי…</div>
+        <label class="btn primary" id="pickLbl">🎞️ בחר סרטון
+          <input type="file" id="file" accept="video/*">
+        </label>
+      </div>
+    </div>
+  </div>
+  <video id="vid" playsinline muted></video>
+
+  <div class="bar">
+    <button class="primary" id="play" disabled>▶ נגן</button>
+    <label class="btn">החלף סרטון<input type="file" id="file2" accept="video/*"></label>
+    <button id="sound" disabled>🔇 קול</button>
+    <div class="seg" role="group" aria-label="מה לטשטש">
+      <button id="mWomen" aria-pressed="true">נשים</button>
+      <button id="mAll" aria-pressed="false">כל האנשים</button>
+    </div>
+  </div>
+
+  <div class="opts">
+    <div class="opt">
+      <b>עוצמת טשטוש</b>
+      <input type="range" id="strength" min="4" max="30" value="14">
+      <small>שמאלה = חזק יותר</small>
+    </div>
+    <div class="opt">
+      <label class="chk"><input type="checkbox" id="safe" checked> <span><b>זהיר</b><small>לטשטש גם כשלא רואים פנים ולא בטוחים</small></span></label>
+    </div>
+  </div>
+
+  <div class="status" id="status"><span id="sModel">מודלים: נטען…</span><span id="sFps"></span><span id="sCount"></span></div>
+  <p class="note">גרסת ניסיון. הזיהוי של אישה/גבר מתבסס על הפנים, ולכן כשלא רואים פנים, מצב "זהיר" מטשטש כדי לא לפספס. בטלפונים ישנים זה יכול לרוץ לאט.</p>
+</div>
+
+<script src="human.js"></script>
+<script>
+{
+const $ = id => document.getElementById(id);
+const vid = $('vid'), cv = $('cv'), ctx = cv.getContext('2d');
+const tiny = document.createElement('canvas'), tctx = tiny.getContext('2d');
+let mode = 'women', ready = false, detecting = false, lastDet = 0, frames = 0, fpsT = performance.now(), detFps = 0, detCount = 0;
+let tracks = [];          // {box:[x,y,w,h], female:sum, votes:n, seen:time}
+const HOLD_MS = 700;      // ממשיכים לטשטש עוד קצת אחרי שהזיהוי איבד מישהו
+
+const human = new Human.Human({
+  modelBasePath: 'models/',
+  backend: 'webgl',
+  cacheSensitivity: 0,
+  filter: { enabled: false },
+  face: { enabled: true,
+    detector: { modelPath: 'blazeface.json', maxDetected: 10, minConfidence: 0.3, rotation: false, skipFrames: 0, skipTime: 0 },
+    mesh: { enabled: false }, iris: { enabled: false }, emotion: { enabled: false }, antispoof: { enabled: false }, liveness: { enabled: false },
+    description: { enabled: true, modelPath: 'faceres.json', skipFrames: 0, skipTime: 0 } },
+  object: { enabled: true, modelPath: 'centernet.json', minConfidence: 0.3, maxDetected: 10, skipFrames: 0, skipTime: 0 },
+  body: { enabled: false }, hand: { enabled: false }, gesture: { enabled: false }, segmentation: { enabled: false },
+});
+
+human.load().then(() => human.warmup()).then(() => {
+  ready = true;
+  $('sModel').textContent = 'מודלים: מוכנים ✓';
+  $('loadMsg').textContent = 'הכול מוכן. בחר סרטון מהגלריה:';
+}).catch(e => {
+  $('sModel').innerHTML = '<span class="warn">שגיאה בטעינת המודלים: ' + (e && e.message || e) + '</span>';
+});
+
+function openFile(f) {
+  if (!f) return;
+  vid.src = URL.createObjectURL(f);
+  vid.load();
+  tracks = [];
+}
+$('file').addEventListener('change', e => openFile(e.target.files[0]));
+$('file2').addEventListener('change', e => openFile(e.target.files[0]));
+vid.addEventListener('loadedmetadata', () => {
+  cv.width = vid.videoWidth; cv.height = vid.videoHeight;
+  $('stage').style.aspectRatio = vid.videoWidth + '/' + vid.videoHeight;
+  $('empty').style.display = 'none';
+  $('play').disabled = false; $('sound').disabled = false;
+  vid.currentTime = 0.01;
+});
+$('play').addEventListener('click', () => {
+  if (vid.paused) { vid.play().catch(() => {}); } else vid.pause();
+});
+vid.addEventListener('play', () => $('play').textContent = '⏸ עצור');
+vid.addEventListener('pause', () => $('play').textContent = '▶ נגן');
+$('sound').addEventListener('click', () => { vid.muted = !vid.muted; $('sound').textContent = vid.muted ? '🔇 קול' : '🔊 קול'; });
+function setMode(m) { mode = m; $('mWomen').setAttribute('aria-pressed', m === 'women'); $('mAll').setAttribute('aria-pressed', m === 'all'); }
+$('mWomen').addEventListener('click', () => setMode('women'));
+$('mAll').addEventListener('click', () => setMode('all'));
+
+// --- התאמת זיהויים לאנשים קיימים (מעקב פשוט) ---
+function iou(a, b) {
+  const x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]);
+  const x2 = Math.min(a[0] + a[2], b[0] + b[2]), y2 = Math.min(a[1] + a[3], b[1] + b[3]);
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  return inter / (a[2] * a[3] + b[2] * b[3] - inter + 1e-6);
+}
+function faceToBody(f) {   // כשרואים רק פנים — מעריכים את אזור הגוף
+  const [x, y, w, h] = f;
+  return [x - w * 1.1, y - h * 0.4, w * 3.2, h * 7.5];
+}
+
+async function detect() {
+  if (!ready || detecting || vid.readyState < 2) return;
+  detecting = true;
+  try {
+    const t0 = performance.now();
+    const r = await human.detect(vid);
+    const now = performance.now();
+    detFps = 1000 / Math.max(1, now - t0);
+    const persons = (r.object || []).filter(o => o.label === 'person').map(o => o.box);
+    const faces = (r.face || []).map(f => ({ box: f.box, female: f.gender === 'female' ? f.genderScore : (f.gender === 'male' ? 1 - f.genderScore : null) }));
+    const regions = persons.map(b => ({ box: b, female: null }));
+    for (const f of faces) {   // משייכים כל פנים לאדם שהן בחלק העליון שלו
+      const cx = f.box[0] + f.box[2] / 2, cy = f.box[1] + f.box[3] / 2;
+      let best = null;
+      for (const p of regions) {
+        const b = p.box;
+        if (cx > b[0] && cx < b[0] + b[2] && cy > b[1] && cy < b[1] + b[3] * 0.5) { best = p; break; }
+      }
+      if (best) { if (f.female !== null) best.female = f.female; }
+      else regions.push({ box: faceToBody(f.box), female: f.female });
+    }
+    for (const reg of regions) {
+      let t = null, bestI = 0.25;
+      for (const tr of tracks) { const v = iou(tr.box, reg.box); if (v > bestI) { bestI = v; t = tr; } }
+      if (!t) { t = { female: 0, votes: 0 }; tracks.push(t); }
+      t.box = reg.box; t.seen = now;
+      if (reg.female !== null) { t.female += reg.female; t.votes++; }
+    }
+    const hold = Math.min(4000, Math.max(HOLD_MS, 2500 / Math.max(detFps, 0.1)));  // במכשיר איטי מחזיקים יותר זמן
+    tracks = tracks.filter(t => now - t.seen < hold);
+    detCount = tracks.length;
+  } catch (e) { console.log(e); }
+  detecting = false;
+}
+
+function shouldBlur(t) {
+  if (mode === 'all') return true;
+  if (t.votes === 0) return $('safe').checked;
+  return t.female / t.votes >= 0.6;
+}
+
+function blurBox(b) {
+  const pad = 0.12, W = cv.width, H = cv.height;
+  let x = Math.max(0, b[0] - b[2] * pad), y = Math.max(0, b[1] - b[3] * pad);
+  let w = Math.min(W - x, b[2] * (1 + 2 * pad)), h = Math.min(H - y, b[3] * (1 + 2 * pad));
+  if (w < 4 || h < 4) return;
+  const s = +$('strength').value;              // כמה "כתמים" לאורך הצלע הארוכה
+  const k = Math.max(w, h) / s;
+  tiny.width = Math.max(1, Math.round(w / k)); tiny.height = Math.max(1, Math.round(h / k));
+  tctx.imageSmoothingEnabled = true;
+  tctx.drawImage(cv, x, y, w, h, 0, 0, tiny.width, tiny.height);
+  ctx.save();
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, Math.min(w, h) * 0.25); else ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(tiny, 0, 0, tiny.width, tiny.height, x, y, w, h);
+  ctx.restore();
+}
+
+function loop() {
+  if (vid.readyState >= 2) {
+    ctx.drawImage(vid, 0, 0, cv.width, cv.height);
+    let n = 0;
+    for (const t of tracks) if (shouldBlur(t)) { blurBox(t.box); n++; }
+    frames++;
+    const now = performance.now();
+    if (now - fpsT > 1000) {
+      $('sFps').textContent = 'מסך: ' + Math.round(frames * 1000 / (now - fpsT)) + ' פריימים/שנ׳ · זיהוי: ' + detFps.toFixed(1) + '/שנ׳';
+      $('sCount').textContent = 'אנשים: ' + detCount + ' · מטושטשים: ' + n;
+      frames = 0; fpsT = now;
+    }
+    detect();
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+window.__state = () => ({ ready, tracks, detFps, mode });
+}
+</script>
+</body>
+</html>
