@@ -78,7 +78,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:32px}
       <small>שמאלה = חזק יותר</small>
     </div>
     <div class="opt">
-      <label class="chk"><input type="checkbox" id="safe" checked> <span><b>זהיר</b><small>לטשטש גם כשלא רואים פנים ולא בטוחים</small></span></label>
+      <label class="chk"><input type="checkbox" id="safe"> <span><b>זהיר</b><small>לטשטש גם כשלא רואים פנים ולא בטוחים</small></span></label>
     </div>
   </div>
 
@@ -179,7 +179,7 @@ async function detect() {
       let t = null, bestI = 0.25;
       for (const tr of tracks) { const v = iou(tr.box, reg.box); if (v > bestI) { bestI = v; t = tr; } }
       if (!t) { t = { female: 0, votes: 0 }; tracks.push(t); }
-      t.box = reg.box; t.seen = now;
+      t.box = t.box ? t.box.map((v, i) => v * 0.35 + reg.box[i] * 0.65) : reg.box; t.seen = now;
       if (reg.female !== null) { t.female += reg.female; t.votes++; }
     }
     const hold = Math.min(4000, Math.max(HOLD_MS, 2500 / Math.max(detFps, 0.1)));  // במכשיר איטי מחזיקים יותר זמן
@@ -192,26 +192,40 @@ async function detect() {
 function shouldBlur(t) {
   if (mode === 'all') return true;
   if (t.votes === 0) return $('safe').checked;
-  return t.female / t.votes >= 0.6;
+  return t.female / t.votes >= 0.66;
 }
 
+const oc = document.createElement('canvas'), octx = oc.getContext('2d');
+const HAS_FILTER = (() => { try { const t = document.createElement('canvas').getContext('2d'); t.filter = 'blur(2px)'; return t.filter === 'blur(2px)'; } catch (e) { return false; } })();
+
 function blurBox(b) {
-  const pad = 0.12, W = cv.width, H = cv.height;
-  let x = Math.max(0, b[0] - b[2] * pad), y = Math.max(0, b[1] - b[3] * pad);
-  let w = Math.min(W - x, b[2] * (1 + 2 * pad)), h = Math.min(H - y, b[3] * (1 + 2 * pad));
-  if (w < 4 || h < 4) return;
-  const s = +$('strength').value;              // כמה "כתמים" לאורך הצלע הארוכה
-  const k = Math.max(w, h) / s;
-  tiny.width = Math.max(1, Math.round(w / k)); tiny.height = Math.max(1, Math.round(h / k));
+  const pad = 0.15, W = cv.width, H = cv.height;
+  const x = Math.max(0, b[0] - b[2] * pad), y = Math.max(0, b[1] - b[3] * pad);
+  const w = Math.min(W - x, b[2] * (1 + 2 * pad)), h = Math.min(H - y, b[3] * (1 + 2 * pad));
+  if (w < 6 || h < 6) return;
+  const s = +$('strength').value;                       // נמוך = חזק יותר
+  // עובדים בגודל קטן (מהיר), מטשטשים, ומגדילים חזרה
+  const k = Math.max(4, Math.max(w, h) / (s * 3));
+  const sw = Math.max(4, Math.round(w / k)), sh = Math.max(4, Math.round(h / k));
+  tiny.width = sw; tiny.height = sh;
   tctx.imageSmoothingEnabled = true;
-  tctx.drawImage(cv, x, y, w, h, 0, 0, tiny.width, tiny.height);
-  ctx.save();
-  ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(x, y, w, h, Math.min(w, h) * 0.25); else ctx.rect(x, y, w, h);
-  ctx.clip();
+  tctx.filter = 'none';
+  tctx.drawImage(cv, x, y, w, h, 0, 0, sw, sh);
+  oc.width = sw; oc.height = sh;
+  octx.globalCompositeOperation = 'source-over';
+  if (HAS_FILTER) { octx.filter = 'blur(' + Math.max(1.5, Math.min(sw, sh) / 7) + 'px)'; }
+  octx.drawImage(tiny, 0, 0);
+  if (HAS_FILTER) { octx.filter = 'none'; octx.drawImage(oc, 0, 0); }   // מעבר נוסף = חלק יותר
+  // מסכה רכה בצורת אליפסה — בלי קצוות של ריבוע
+  octx.globalCompositeOperation = 'destination-in';
+  octx.save();
+  octx.translate(sw / 2, sh / 2); octx.scale(sw / 2, sh / 2);
+  const g = octx.createRadialGradient(0, 0, 0, 0, 0, 1);
+  g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.78, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  octx.fillStyle = g; octx.fillRect(-1, -1, 2, 2);
+  octx.restore();
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(tiny, 0, 0, tiny.width, tiny.height, x, y, w, h);
-  ctx.restore();
+  ctx.drawImage(oc, 0, 0, sw, sh, x, y, w, h);
 }
 
 function loop() {
